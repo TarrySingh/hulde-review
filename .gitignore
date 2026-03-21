@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.next/
+.cache/
+.turbo/
+*.tsbuildinfo
+.hulde-review/
+.env
+.env.local
+*.DS_Store
+*.DS_Store

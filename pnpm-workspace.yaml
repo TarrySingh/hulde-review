@@ -1,0 +1,3 @@
+packages:
+  - 'hulde-review-plugin/packages/*'
+  - 'hulde-review-plugin'

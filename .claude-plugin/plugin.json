@@ -1,0 +1,19 @@
+{
+  "name": "hulde-review",
+  "description": "AI-powered code review and visualization — analyze, visualize, and improve any codebase",
+  "version": "1.1.1",
+  "author": {
+    "name": "Tarry Singh"
+  },
+  "homepage": "https://hulde.ai",
+  "repository": "https://github.com/tarrysingh/hulde-review",
+  "license": "MIT",
+  "keywords": [
+    "code-review",
+    "codebase-analysis",
+    "knowledge-graph",
+    "architecture",
+    "visualization",
+    "edtech"
+  ]
+}
