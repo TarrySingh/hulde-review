@@ -96,6 +96,8 @@ function GraphViewInner() {
   const diffMode = useDashboardStore((s) => s.diffMode);
   const changedNodeIds = useDashboardStore((s) => s.changedNodeIds);
   const affectedNodeIds = useDashboardStore((s) => s.affectedNodeIds);
+  const reviewMode = useDashboardStore((s) => s.reviewMode);
+  const reviewReport = useDashboardStore((s) => s.reviewReport);
 
   const handleNodeSelect = useCallback(
     (nodeId: string) => {
@@ -129,8 +131,39 @@ function GraphViewInner() {
           )
         : graph.edges;
 
+    // Build review findings map: nodeId/filePath -> findings
+    const reviewNodeMap = new Map<string, { count: number; hasCriticalHigh: boolean; hasMedium: boolean }>();
+    if (reviewMode && reviewReport) {
+      for (const finding of reviewReport.findings) {
+        // Match by nodeId first, then by filePath
+        const matchIds: string[] = [];
+        if (finding.nodeId) {
+          matchIds.push(finding.nodeId);
+        }
+        // Also match by filePath to graph node filePath
+        for (const gNode of filteredGraphNodes) {
+          if (gNode.filePath && finding.filePath && gNode.filePath === finding.filePath) {
+            matchIds.push(gNode.id);
+          }
+        }
+        for (const mid of matchIds) {
+          const existing = reviewNodeMap.get(mid) ?? { count: 0, hasCriticalHigh: false, hasMedium: false };
+          existing.count += 1;
+          if (finding.severity === "critical" || finding.severity === "high") {
+            existing.hasCriticalHigh = true;
+          }
+          if (finding.severity === "medium") {
+            existing.hasMedium = true;
+          }
+          reviewNodeMap.set(mid, existing);
+        }
+      }
+    }
+
     const flowNodes: CustomFlowNode[] = filteredGraphNodes.map((node) => {
       const matchResult = searchResults.find((r) => r.nodeId === node.id);
+      const reviewInfo = reviewNodeMap.get(node.id);
+      const hasReviewFindings = reviewMode && reviewInfo !== undefined;
       return {
         id: node.id,
         type: "custom" as const,
@@ -147,6 +180,10 @@ function GraphViewInner() {
           isDiffChanged: diffMode && changedNodeIds.has(node.id),
           isDiffAffected: diffMode && affectedNodeIds.has(node.id),
           isDiffFaded: diffMode && !changedNodeIds.has(node.id) && !affectedNodeIds.has(node.id),
+          isReviewCritical: hasReviewFindings && (reviewInfo?.hasCriticalHigh ?? false),
+          isReviewWarning: hasReviewFindings && !reviewInfo?.hasCriticalHigh && (reviewInfo?.hasMedium ?? false),
+          isReviewClean: reviewMode && !hasReviewFindings,
+          reviewFindingCount: reviewMode ? (reviewInfo?.count ?? 0) : 0,
           onNodeClick: handleNodeSelect,
         },
       };
@@ -277,7 +314,7 @@ function GraphViewInner() {
     ];
 
     return { initialNodes: allNodes, initialEdges: laid.edges };
-  }, [graph, searchResults, selectedNodeId, showLayers, tourHighlightedNodeIds, persona, handleNodeSelect, diffMode, changedNodeIds, affectedNodeIds]);
+  }, [graph, searchResults, selectedNodeId, showLayers, tourHighlightedNodeIds, persona, handleNodeSelect, diffMode, changedNodeIds, affectedNodeIds, reviewMode, reviewReport]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);

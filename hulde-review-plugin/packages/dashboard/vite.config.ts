@@ -42,6 +42,26 @@ export default defineConfig({
             res.end(JSON.stringify({ error: "No knowledge graph found. Run /hulde-review first." }));
             return;
           }
+          if (req.url === "/review-report.json") {
+            const graphDir = process.env.GRAPH_DIR;
+            const candidates = [
+              ...(graphDir
+                ? [path.resolve(graphDir, ".hulde-review/review-report.json")]
+                : []),
+              path.resolve(process.cwd(), ".hulde-review/review-report.json"),
+              path.resolve(process.cwd(), "../../../.hulde-review/review-report.json"),
+            ];
+            for (const candidate of candidates) {
+              if (fs.existsSync(candidate)) {
+                res.setHeader("Content-Type", "application/json");
+                fs.createReadStream(candidate).pipe(res);
+                return;
+              }
+            }
+            res.statusCode = 404;
+            res.end();
+            return;
+          }
           if (req.url === "/diff-overlay.json") {
             const graphDir = process.env.GRAPH_DIR;
             const candidates = [

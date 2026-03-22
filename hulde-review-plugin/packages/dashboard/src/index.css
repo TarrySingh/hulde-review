@@ -28,6 +28,13 @@
   --color-node-module: #c9a06c;
   --color-node-concept: #b07a8a;
 
+  /* Review overlay colors */
+  --color-review-critical: #e05252;
+  --color-review-high: #e08a52;
+  --color-review-medium: #d4a030;
+  --color-review-low: #4a7c9b;
+  --color-review-info: #5a6b60;
+
   /* Diff overlay colors */
   --color-diff-changed: #e05252;
   --color-diff-affected: #d4a030;
@@ -132,6 +139,21 @@ body {
 .diff-faded {
   opacity: 0.25;
   filter: saturate(0.3);
+  transition: opacity 0.3s ease, filter 0.3s ease;
+}
+
+/* Review overlay glow effects */
+.review-critical-glow {
+  box-shadow: 0 0 16px rgba(224, 82, 82, 0.3);
+}
+
+.review-warning-glow {
+  box-shadow: 0 0 12px rgba(212, 160, 48, 0.25);
+}
+
+.review-clean {
+  opacity: 0.3;
+  filter: saturate(0.2);
   transition: opacity 0.3s ease, filter 0.3s ease;
 }
 

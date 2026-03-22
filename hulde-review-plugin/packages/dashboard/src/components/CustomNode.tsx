@@ -35,6 +35,10 @@ export interface CustomNodeData extends Record<string, unknown> {
   isDiffChanged: boolean;
   isDiffAffected: boolean;
   isDiffFaded: boolean;
+  isReviewCritical: boolean;
+  isReviewWarning: boolean;
+  isReviewClean: boolean;
+  reviewFindingCount: number;
   onNodeClick?: (nodeId: string) => void;
 }
 
@@ -71,6 +75,15 @@ export default function CustomNode({
     extraClass += " ring-1 ring-[var(--color-diff-affected)] diff-affected-glow";
   } else if (data.isDiffFaded) {
     extraClass += " diff-faded";
+  }
+
+  // Review overlay styling (composes with above)
+  if (data.isReviewCritical) {
+    extraClass += " ring-2 ring-[var(--color-review-critical)] review-critical-glow";
+  } else if (data.isReviewWarning) {
+    extraClass += " ring-1 ring-[var(--color-review-medium)] review-warning-glow";
+  } else if (data.isReviewClean) {
+    extraClass += " review-clean";
   }
 
   const name = data.label ?? "unnamed";
@@ -113,6 +126,20 @@ export default function CustomNode({
           {data.summary}
         </div>
       </div>
+
+      {/* Review finding count badge */}
+      {data.reviewFindingCount > 0 && (
+        <div
+          className="absolute -top-2 -right-2 min-w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-mono font-bold text-white z-10"
+          style={{
+            backgroundColor: data.isReviewCritical
+              ? "var(--color-review-critical)"
+              : "var(--color-review-medium)",
+          }}
+        >
+          {data.reviewFindingCount}
+        </div>
+      )}
 
       <Handle
         type="source"

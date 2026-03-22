@@ -8,6 +8,43 @@ import type {
 
 export type Persona = "non-technical" | "junior" | "experienced";
 
+// Review types (mirrors @hulde-review/core review types)
+export type Severity = "critical" | "high" | "medium" | "low" | "info";
+export type FindingCategory = "quality" | "security" | "performance" | "maintainability" | "reliability" | "modernization" | "architecture" | "compliance";
+
+export interface ReviewFinding {
+  id: string;
+  category: FindingCategory;
+  severity: Severity;
+  title: string;
+  description: string;
+  filePath: string;
+  lineRange?: [number, number];
+  nodeId?: string;
+  suggestion?: string;
+  effort: string;
+  tags: string[];
+  cweId?: string;
+}
+
+export interface ReviewSummary {
+  totalFindings: number;
+  bySeverity: Record<Severity, number>;
+  byCategory: Record<FindingCategory, number>;
+  riskScore: number;
+  technicalDebtHours: number;
+  topRisks: string[];
+}
+
+export interface CodeReviewReport {
+  version: string;
+  project: { name: string; analyzedAt: string; totalFiles: number; totalLines: number; languages: string[] };
+  summary: ReviewSummary;
+  findings: ReviewFinding[];
+  executiveSummary: string;
+  recommendations: Array<{ priority: number; title: string; description: string; estimatedEffort: string; impact: string }>;
+}
+
 interface DashboardStore {
   graph: KnowledgeGraph | null;
   selectedNodeId: string | null;
@@ -32,6 +69,11 @@ interface DashboardStore {
   changedNodeIds: Set<string>;
   affectedNodeIds: Set<string>;
 
+  reviewReport: CodeReviewReport | null;
+  reviewMode: boolean;
+  reviewFilter: Severity | "all";
+  selectedFindingId: string | null;
+
   setGraph: (graph: KnowledgeGraph) => void;
   selectNode: (nodeId: string | null) => void;
   setSearchQuery: (query: string) => void;
@@ -43,6 +85,12 @@ interface DashboardStore {
   setDiffOverlay: (changed: string[], affected: string[]) => void;
   toggleDiffMode: () => void;
   clearDiffOverlay: () => void;
+
+  setReviewReport: (report: CodeReviewReport) => void;
+  toggleReviewMode: () => void;
+  setReviewFilter: (filter: Severity | "all") => void;
+  selectFinding: (findingId: string | null) => void;
+  clearReview: () => void;
 
   startTour: () => void;
   stopTour: () => void;
@@ -78,6 +126,11 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   diffMode: false,
   changedNodeIds: new Set<string>(),
   affectedNodeIds: new Set<string>(),
+
+  reviewReport: null,
+  reviewMode: false,
+  reviewFilter: "all",
+  selectedFindingId: null,
 
   setGraph: (graph) => {
     const searchEngine = new SearchEngine(graph.nodes);
@@ -122,6 +175,26 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       diffMode: false,
       changedNodeIds: new Set<string>(),
       affectedNodeIds: new Set<string>(),
+    }),
+
+  setReviewReport: (report) =>
+    set({ reviewReport: report, reviewMode: true }),
+
+  toggleReviewMode: () =>
+    set((state) => ({ reviewMode: !state.reviewMode })),
+
+  setReviewFilter: (filter) =>
+    set({ reviewFilter: filter }),
+
+  selectFinding: (findingId) =>
+    set({ selectedFindingId: findingId }),
+
+  clearReview: () =>
+    set({
+      reviewReport: null,
+      reviewMode: false,
+      reviewFilter: "all",
+      selectedFindingId: null,
     }),
 
   startTour: () => {

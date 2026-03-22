@@ -7,9 +7,11 @@ import SearchBar from "./components/SearchBar";
 import NodeInfo from "./components/NodeInfo";
 import LayerLegend from "./components/LayerLegend";
 import DiffToggle from "./components/DiffToggle";
+import ReviewToggle from "./components/ReviewToggle";
 import LearnPanel from "./components/LearnPanel";
 import PersonaSelector from "./components/PersonaSelector";
 import ProjectOverview from "./components/ProjectOverview";
+import ReviewPanel from "./components/ReviewPanel";
 
 function App() {
   const graph = useDashboardStore((s) => s.graph);
@@ -20,6 +22,8 @@ function App() {
   const codeViewerOpen = useDashboardStore((s) => s.codeViewerOpen);
   const closeCodeViewer = useDashboardStore((s) => s.closeCodeViewer);
   const setDiffOverlay = useDashboardStore((s) => s.setDiffOverlay);
+  const reviewMode = useDashboardStore((s) => s.reviewMode);
+  const setReviewReport = useDashboardStore((s) => s.setReviewReport);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -74,9 +78,32 @@ function App() {
       });
   }, [setDiffOverlay]);
 
+  useEffect(() => {
+    fetch("/review-report.json")
+      .then((res) => {
+        if (!res.ok) return null;
+        return res.json();
+      })
+      .then((data: unknown) => {
+        if (
+          data &&
+          typeof data === "object" &&
+          "summary" in data &&
+          "findings" in data
+        ) {
+          setReviewReport(data as Parameters<typeof setReviewReport>[0]);
+        }
+      })
+      .catch(() => {
+        // Silently ignore - review report is optional
+      });
+  }, [setReviewReport]);
+
   // Determine sidebar content
-  // Learn persona always shows LearnPanel; tour active overrides everything
-  const sidebarContent = tourActive || persona === "junior" ? (
+  // Review mode shows ReviewPanel; Learn persona shows LearnPanel; tour active overrides
+  const sidebarContent = reviewMode ? (
+    <ReviewPanel />
+  ) : tourActive || persona === "junior" ? (
     <LearnPanel />
   ) : selectedNodeId ? (
     <NodeInfo />
@@ -96,6 +123,7 @@ function App() {
           <PersonaSelector />
         </div>
         <div className="flex items-center gap-4">
+          <ReviewToggle />
           <DiffToggle />
           <LayerLegend />
         </div>
