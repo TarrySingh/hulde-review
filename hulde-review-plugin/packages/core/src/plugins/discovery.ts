@@ -16,6 +16,11 @@ export const DEFAULT_PLUGIN_CONFIG: PluginConfig = {
       enabled: true,
       languages: ["typescript", "javascript"],
     },
+    {
+      name: "fortran",
+      enabled: true,
+      languages: ["fortran"],
+    },
   ],
 };
 

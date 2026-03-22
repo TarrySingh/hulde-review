@@ -16,6 +16,14 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
   c: "c",
   swift: "swift",
   php: "php",
+  f: "fortran",
+  for: "fortran",
+  f77: "fortran",
+  f90: "fortran",
+  f95: "fortran",
+  f03: "fortran",
+  f08: "fortran",
+  fpp: "fortran",
 };
 
 /**
