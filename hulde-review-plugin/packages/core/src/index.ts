@@ -49,3 +49,17 @@ export {
   cosineSimilarity,
   type SemanticSearchOptions,
 } from "./embedding-search.js";
+export type {
+  Severity,
+  FindingCategory,
+  ReviewFinding,
+  ReviewSummary,
+  CodeReviewReport,
+} from "./review/types.js";
+export {
+  RulesEngine,
+  createDefaultRulesEngine,
+  type AnalysisContext,
+  type ReviewRule,
+} from "./review/rules-engine.js";
+export { ReportGenerator, type ReportInput } from "./review/report-generator.js";

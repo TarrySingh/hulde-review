@@ -20,6 +20,18 @@
     "./schema": {
       "types": "./dist/schema.d.ts",
       "default": "./dist/schema.js"
+    },
+    "./review/types": {
+      "types": "./dist/review/types.d.ts",
+      "default": "./dist/review/types.js"
+    },
+    "./review/rules-engine": {
+      "types": "./dist/review/rules-engine.d.ts",
+      "default": "./dist/review/rules-engine.js"
+    },
+    "./review/report-generator": {
+      "types": "./dist/review/report-generator.d.ts",
+      "default": "./dist/review/report-generator.js"
     }
   },
   "scripts": {
