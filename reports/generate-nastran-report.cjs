@@ -111,6 +111,70 @@ function statRow(label, value, shading) {
   });
 }
 
+// ─── Helper: Code block (monospace on gray bg) ──────────────────
+const CODE_FONT = "Courier New";
+const CODE_SIZE = 15;
+const codeBorder = { style: BorderStyle.SINGLE, size: 1, color: BORDER_GRAY };
+const codeBorders = { top: codeBorder, bottom: codeBorder, left: codeBorder, right: codeBorder };
+
+function codeBlock(code, bgColor, labelColor, label) {
+  const lines = code.split("\n");
+  return [
+    // Label row
+    new Table({
+      width: { size: CONTENT_WIDTH, type: WidthType.DXA },
+      columnWidths: [CONTENT_WIDTH],
+      rows: [new TableRow({
+        children: [new TableCell({
+          borders: { top: codeBorder, left: codeBorder, right: codeBorder, bottom: { style: BorderStyle.NONE, size: 0, color: WHITE } },
+          width: { size: CONTENT_WIDTH, type: WidthType.DXA },
+          shading: { fill: labelColor, type: ShadingType.CLEAR },
+          margins: { top: 40, bottom: 40, left: 120, right: 120 },
+          children: [new Paragraph({ children: [new TextRun({ text: label, font: FONT, size: 16, bold: true, color: WHITE })] })],
+        })],
+      })],
+    }),
+    // Code content
+    new Table({
+      width: { size: CONTENT_WIDTH, type: WidthType.DXA },
+      columnWidths: [CONTENT_WIDTH],
+      rows: [new TableRow({
+        children: [new TableCell({
+          borders: { bottom: codeBorder, left: codeBorder, right: codeBorder, top: { style: BorderStyle.NONE, size: 0, color: WHITE } },
+          width: { size: CONTENT_WIDTH, type: WidthType.DXA },
+          shading: { fill: bgColor, type: ShadingType.CLEAR },
+          margins: { top: 80, bottom: 80, left: 160, right: 160 },
+          children: lines.map(line =>
+            new Paragraph({
+              spacing: { before: 0, after: 0, line: 260 },
+              children: [new TextRun({ text: line || " ", font: CODE_FONT, size: CODE_SIZE, color: TEXT_DARK })],
+            })
+          ),
+        })],
+      })],
+    }),
+  ];
+}
+
+function makeTransformExample(num, title, description, beforeCode, afterCode) {
+  return [
+    new Paragraph({
+      heading: HeadingLevel.HEADING_2,
+      children: [new TextRun({ text: `Example ${num}: ${title}` })],
+    }),
+    new Paragraph({
+      spacing: { after: 160 },
+      children: [new TextRun({ text: description, font: FONT, size: 20, color: TEXT_DARK, italics: true })],
+    }),
+    // BEFORE block (red-tinted)
+    ...codeBlock(beforeCode, "FFF5F5", "DC2626", "\u2716  BEFORE \u2014 Legacy FORTRAN"),
+    new Paragraph({ spacing: { before: 120 }, children: [] }),
+    // AFTER block (green-tinted)
+    ...codeBlock(afterCode, "F0FFF4", HULDE_GREEN, "\u2714  AFTER \u2014 Modern Fortran 2018"),
+    new Paragraph({ spacing: { before: 240 }, children: [] }),
+  ];
+}
+
 // ─── Build Document ──────────────────────────────────────────────
 const doc = new Document({
   styles: {
@@ -588,6 +652,260 @@ const doc = new Document({
         new Paragraph({ numbering: { reference: "bullets", level: 0 }, children: [new TextRun({ text: "Target Modern Fortran 2018 for numerical core, C++ for infrastructure and I/O layers.", font: FONT, size: 22 })] }),
         new Paragraph({ numbering: { reference: "bullets", level: 0 }, children: [new TextRun({ text: "Maintain parallel operation of legacy and modernized systems throughout migration.", font: FONT, size: 22 })] }),
         new Paragraph({ numbering: { reference: "bullets", level: 0 }, children: [new TextRun({ text: "Validate modernized modules against the NASTRAN Verification Problem Manual.", font: FONT, size: 22 })] }),
+
+        new Paragraph({ children: [new PageBreak()] }),
+
+        // ─── 8. CODE TRANSFORMATION PREVIEW ──────────────────────
+        new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("8. Code Transformation Preview")] }),
+        new Paragraph({
+          spacing: { after: 200 },
+          children: [new TextRun({ text: "The following examples demonstrate the type of transformations Hulde Review recommends. Each example shows the original legacy FORTRAN pattern alongside the modernized equivalent. These are representative of the changes that would be applied across the 1,728 files during migration.", font: FONT, size: 22, color: TEXT_DARK })],
+        }),
+
+        // ─── Example 1: GOTO → Structured IF/THEN/ELSE ──────────
+        ...makeTransformExample(
+          "1",
+          "GOTO Spaghetti Code \u2192 Structured Control Flow",
+          "Eliminates unstructured jumps with proper IF/THEN/ELSE blocks. Reduces cyclomatic complexity and makes the logic traceable.",
+          `      SUBROUTINE SOLVE(A, B, N, IERR)
+      IMPLICIT NONE
+      INTEGER N, IERR, I
+      REAL A(N,N), B(N)
+      IERR = 0
+      DO 100 I = 1, N
+        IF (A(I,I) .EQ. 0.0) GOTO 999
+        B(I) = B(I) / A(I,I)
+  100 CONTINUE
+      RETURN
+  999 IERR = -1
+      WRITE(6,*) 'SINGULAR MATRIX'
+      GOTO 100
+      END`,
+          `module linear_solver
+  implicit none
+contains
+  subroutine solve(A, B, n, ierr)
+    integer, intent(in)    :: n
+    real,    intent(inout)  :: A(n,n), B(n)
+    integer, intent(out)   :: ierr
+    integer :: i
+
+    ierr = 0
+    do i = 1, n
+      if (A(i,i) == 0.0) then
+        ierr = -1
+        write(*,*) 'Error: singular matrix at row', i
+        return
+      end if
+      B(i) = B(i) / A(i,i)
+    end do
+  end subroutine solve
+end module linear_solver`
+        ),
+
+        // ─── Example 2: COMMON Block → Module Encapsulation ─────
+        ...makeTransformExample(
+          "2",
+          "COMMON Block Global State \u2192 Module Encapsulation",
+          "Replaces unprotected shared memory with typed module variables and explicit INTENT attributes, preventing unintended side effects.",
+          `C     GLOBAL DATA VIA COMMON BLOCKS
+      COMMON /MACHIN/ MACH, IDYN, KCORE
+      COMMON /SYSTEM/ IBUF, NOUT, NOGO
+      COMMON /NAMES/ RD, RDREW, WRT, WRTREW
+      INTEGER MACH, IDYN, KCORE
+      INTEGER IBUF, NOUT, NOGO
+      INTEGER RD, RDREW, WRT, WRTREW
+
+      SUBROUTINE XREAD(BUF, NWORDS)
+      COMMON /MACHIN/ MACH, IDYN, KCORE
+      COMMON /SYSTEM/ IBUF, NOUT, NOGO
+      NOGO = 0
+      IF (IBUF .LE. 0) NOGO = -1
+      END`,
+          `module machine_config
+  implicit none
+  private
+  integer, public, protected :: mach  = 0
+  integer, public, protected :: idyn  = 0
+  integer, public, protected :: kcore = 0
+  public :: init_machine
+contains
+  subroutine init_machine(m, d, k)
+    integer, intent(in) :: m, d, k
+    mach = m; idyn = d; kcore = k
+  end subroutine
+end module machine_config
+
+module system_io
+  implicit none
+  private
+  integer, public :: ibuf = 0, nout = 6, nogo = 0
+  public :: xread
+contains
+  subroutine xread(buf, nwords, status)
+    real,    intent(out) :: buf(:)
+    integer, intent(in)  :: nwords
+    integer, intent(out) :: status
+    status = 0
+    if (ibuf <= 0) status = -1
+  end subroutine xread
+end module system_io`
+        ),
+
+        // ─── Example 3: EQUIVALENCE → Proper Typed Variables ────
+        ...makeTransformExample(
+          "3",
+          "EQUIVALENCE Memory Aliasing \u2192 Proper Typed Variables",
+          "Removes dangerous type-punning where INTEGER and REAL share the same memory address. Prevents subtle numerical bugs in production.",
+          `      SUBROUTINE PACK(DATA, IDATA, N)
+C     USE EQUIVALENCE TO TREAT SAME MEMORY AS
+C     BOTH REAL AND INTEGER
+      REAL DATA(N)
+      INTEGER IDATA(N)
+      EQUIVALENCE (DATA(1), IDATA(1))
+C
+C     STORE INTEGER FLAGS IN REAL ARRAY
+      IDATA(1) = 1
+      IDATA(2) = N
+C     NOW DATA(1) CONTAINS GARBAGE FLOAT VALUE
+      DATA(3) = 3.14159
+C     NOW IDATA(3) CONTAINS GARBAGE INT VALUE
+      RETURN
+      END`,
+          `module data_packer
+  implicit none
+
+  type :: packed_record
+    integer :: flag     = 0
+    integer :: count    = 0
+    real    :: value    = 0.0
+  end type packed_record
+
+contains
+  subroutine pack(record, n)
+    type(packed_record), intent(out) :: record
+    integer,             intent(in)  :: n
+
+    record%flag  = 1
+    record%count = n
+    record%value = 3.14159
+    ! Each field has its own memory — no aliasing
+  end subroutine pack
+end module data_packer`
+        ),
+
+        // ─── Example 4: Arithmetic IF → SELECT CASE ─────────────
+        ...makeTransformExample(
+          "4",
+          "Arithmetic IF / Computed GOTO \u2192 SELECT CASE",
+          "Replaces the deprecated three-way arithmetic IF and computed GOTO dispatch with readable SELECT CASE. Critical for maintainability in large codebases.",
+          `      SUBROUTINE DISPATCH(ITYPE, A, B, RESULT)
+      REAL A, B, RESULT
+      INTEGER ITYPE
+C
+C     ARITHMETIC IF FOR SIGN CHECK
+      IF (A - B) 10, 20, 30
+C
+C     COMPUTED GOTO FOR TYPE DISPATCH
+   10 GOTO (100, 200, 300, 400), ITYPE
+   20 RESULT = 0.0
+      RETURN
+   30 RESULT = A - B
+      RETURN
+  100 RESULT = A + B
+      RETURN
+  200 RESULT = A * B
+      RETURN
+  300 RESULT = A / B
+      RETURN
+  400 RESULT = A ** B
+      RETURN
+      END`,
+          `module math_dispatch
+  implicit none
+contains
+  subroutine dispatch(itype, a, b, result)
+    integer, intent(in)  :: itype
+    real,    intent(in)  :: a, b
+    real,    intent(out) :: result
+
+    if (a < b) then
+      select case (itype)
+        case (1); result = a + b
+        case (2); result = a * b
+        case (3); result = a / b
+        case (4); result = a ** b
+        case default
+          result = 0.0
+          write(*,*) 'Warning: unknown type', itype
+      end select
+    else if (a == b) then
+      result = 0.0
+    else
+      result = a - b
+    end if
+  end subroutine dispatch
+end module math_dispatch`
+        ),
+
+        // ─── Example 5: Fixed-Format + No IMPLICIT NONE → Modern Free-Format ──
+        ...makeTransformExample(
+          "5",
+          "Fixed-Format with Implicit Typing \u2192 Modern Free-Format with Full Type Safety",
+          "Converts from the 1966-era column-based format to free-format Fortran 2018. Adds IMPLICIT NONE, INTENT attributes, and allocatable arrays for dynamic sizing.",
+          `C23456789012345678901234567890123456789012345678901234567890123456789012
+      SUBROUTINE BLDPK(Z, IZ, MCB, IBUF3)
+C     BUILD PACKED MATRIX FROM UNPACKED
+      DIMENSION Z(1), IZ(1)
+      INTEGER MCB(7)
+      NROW = MCB(2)
+      NCOL = MCB(3)
+      DO 200 J = 1, NCOL
+        DO 100 I = 1, NROW
+          IF (Z(I + (J-1)*NROW) .NE. 0.0) THEN
+            IZ(IBUF3) = I
+            Z(IBUF3+1) = Z(I + (J-1)*NROW)
+            IBUF3 = IBUF3 + 2
+          ENDIF
+  100   CONTINUE
+  200 CONTINUE
+      RETURN
+      END`,
+          `module matrix_builder
+  use iso_fortran_env, only: real64, int32
+  implicit none
+  private
+  public :: build_packed
+
+  type :: sparse_entry
+    integer(int32) :: row
+    real(real64)   :: value
+  end type sparse_entry
+
+contains
+  subroutine build_packed(matrix, nrow, ncol, packed, nnz)
+    real(real64), intent(in)               :: matrix(:,:)
+    integer,      intent(in)               :: nrow, ncol
+    type(sparse_entry), allocatable, intent(out) :: packed(:)
+    integer,      intent(out)              :: nnz
+    integer :: i, j, k
+    type(sparse_entry) :: temp(nrow * ncol)
+
+    k = 0
+    do j = 1, ncol
+      do i = 1, nrow
+        if (matrix(i,j) /= 0.0_real64) then
+          k = k + 1
+          temp(k) = sparse_entry(i, matrix(i,j))
+        end if
+      end do
+    end do
+    nnz = k
+    allocate(packed(nnz))
+    packed(1:nnz) = temp(1:nnz)
+  end subroutine build_packed
+end module matrix_builder`
+        ),
 
         new Paragraph({ spacing: { before: 400 }, children: [] }),
 
