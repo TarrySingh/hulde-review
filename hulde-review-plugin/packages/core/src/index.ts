@@ -71,3 +71,30 @@ export {
   type MigrationPlan,
 } from "./review/migration-analyzer.js";
 export { ReportGenerator, type ReportInput } from "./review/report-generator.js";
+export type {
+  LanguageProfile,
+  SemanticCapabilities,
+  MigrationTargetProfile,
+  ProfileTestRequirements,
+} from "./review/language-profiles.js";
+export {
+  ALL_PROFILES,
+  getProfile,
+  getProfileForFile,
+  getReadyProfiles,
+  getProfileStatus,
+  fortranProfile,
+  typescriptProfile,
+  cobolProfile,
+  cCppProfile,
+  pythonProfile,
+  javaProfile,
+  adaProfile,
+  rpgProfile,
+} from "./review/language-profiles.js";
+export type { ProfileStatus } from "./review/profile-checker.js";
+export {
+  checkProfileReadiness,
+  checkAllProfiles,
+  getProfileSummary,
+} from "./review/profile-checker.js";
