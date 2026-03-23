@@ -518,7 +518,7 @@ describe("RulesEngine", () => {
   });
 
   it("creates default engine with all rules", () => {
-    expect(engine.ruleCount).toBe(23);
+    expect(engine.ruleCount).toBe(37);
   });
 
   it("returns only applicable rules for a language", () => {

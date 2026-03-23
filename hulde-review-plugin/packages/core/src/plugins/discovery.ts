@@ -21,6 +21,11 @@ export const DEFAULT_PLUGIN_CONFIG: PluginConfig = {
       enabled: true,
       languages: ["fortran"],
     },
+    {
+      name: "cobol",
+      enabled: true,
+      languages: ["cobol"],
+    },
   ],
 };
 

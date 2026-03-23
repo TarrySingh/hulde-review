@@ -1096,6 +1096,656 @@ export const unsafeRegexRule: ReviewRule = {
 };
 
 // ============================================================================
+// COBOL-SPECIFIC RULES
+// ============================================================================
+
+export const cobolLargeParagraphRule: ReviewRule = {
+  id: "cobol-large-paragraph",
+  name: "Large COBOL Paragraph",
+  category: "quality",
+  severity: "medium",
+  languages: ["cobol"],
+  description: "COBOL paragraphs that are too long are difficult to understand and maintain.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    for (const fn of ctx.structural.functions) {
+      if (fn.returnType === "PROGRAM") continue; // Skip the whole-program function
+      const length = fn.lineRange[1] - fn.lineRange[0] + 1;
+      if (length > 200) {
+        findings.push({
+          id: findingId("quality", "cobol-large-paragraph", ctx.filePath, fn.name + ":critical"),
+          category: "quality",
+          severity: "critical",
+          title: `Extremely large paragraph '${fn.name}' (${length} lines)`,
+          description: `Paragraph '${fn.name}' spans ${length} lines. COBOL paragraphs over 200 lines are nearly impossible to reason about or maintain.`,
+          filePath: ctx.filePath,
+          lineRange: fn.lineRange,
+          suggestion: `Decompose '${fn.name}' into smaller paragraphs using PERFORM.`,
+          effort: "large",
+          tags: ["cobol", "large-paragraph"],
+        });
+      } else if (length > 100) {
+        findings.push({
+          id: findingId("quality", "cobol-large-paragraph", ctx.filePath, fn.name + ":high"),
+          category: "quality",
+          severity: "high",
+          title: `Very large paragraph '${fn.name}' (${length} lines)`,
+          description: `Paragraph '${fn.name}' spans ${length} lines. Consider breaking it into smaller paragraphs.`,
+          filePath: ctx.filePath,
+          lineRange: fn.lineRange,
+          suggestion: `Extract logical sections of '${fn.name}' into helper paragraphs.`,
+          effort: "medium",
+          tags: ["cobol", "large-paragraph"],
+        });
+      } else if (length > 50) {
+        findings.push({
+          id: findingId("quality", "cobol-large-paragraph", ctx.filePath, fn.name + ":medium"),
+          category: "quality",
+          severity: "medium",
+          title: `Large paragraph '${fn.name}' (${length} lines)`,
+          description: `Paragraph '${fn.name}' spans ${length} lines. This exceeds the recommended 50-line limit.`,
+          filePath: ctx.filePath,
+          lineRange: fn.lineRange,
+          suggestion: `Look for opportunities to simplify '${fn.name}'.`,
+          effort: "small",
+          tags: ["cobol", "large-paragraph"],
+        });
+      }
+    }
+    return findings;
+  },
+};
+
+export const cobolGotoUsageRule: ReviewRule = {
+  id: "cobol-goto-usage",
+  name: "COBOL GO TO Usage",
+  category: "quality",
+  severity: "medium",
+  languages: ["cobol"],
+  description: "GO TO statements create unstructured control flow in COBOL programs.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    const lines = ctx.content.split("\n");
+    let gotoCount = 0;
+    const gotoLines: number[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const upper = line.toUpperCase();
+      // Skip comments (fixed-format: col 7 = *)
+      if (line.length >= 7 && (line[6] === "*" || line[6] === "/")) continue;
+      if (/\bGO\s*TO\s+/i.test(upper)) {
+        gotoCount++;
+        gotoLines.push(i + 1);
+      }
+    }
+
+    if (gotoCount > 0) {
+      let severity: Severity = "medium";
+      if (gotoCount > 10) severity = "critical";
+      else if (gotoCount > 5) severity = "high";
+
+      findings.push({
+        id: findingId("quality", "cobol-goto-usage", ctx.filePath),
+        category: "quality",
+        severity,
+        title: `${gotoCount} GO TO statement${gotoCount > 1 ? "s" : ""} detected`,
+        description: `This file contains ${gotoCount} GO TO statement${gotoCount > 1 ? "s" : ""}. GO TO-based control flow creates unstructured "spaghetti code" that is difficult to follow and maintain. Lines: ${gotoLines.slice(0, 10).join(", ")}${gotoLines.length > 10 ? "..." : ""}`,
+        filePath: ctx.filePath,
+        suggestion: "Replace GO TO with structured PERFORM statements. Use PERFORM UNTIL for loops, EVALUATE for multi-way branching.",
+        effort: gotoCount > 10 ? "epic" : "large",
+        tags: ["cobol", "goto", "legacy"],
+      });
+    }
+
+    return findings;
+  },
+};
+
+export const cobolDeepNestingRule: ReviewRule = {
+  id: "cobol-deep-nesting",
+  name: "COBOL Deep Nesting",
+  category: "quality",
+  severity: "medium",
+  languages: ["cobol"],
+  description: "Deeply nested IF/EVALUATE statements make COBOL code hard to follow.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    const lines = ctx.content.split("\n");
+    let depth = 0;
+    let maxDepth = 0;
+    let maxDepthLine = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const upper = lines[i].toUpperCase();
+      // Skip comments
+      if (lines[i].length >= 7 && (lines[i][6] === "*" || lines[i][6] === "/")) continue;
+
+      if (/\bIF\b/.test(upper) && !/\bEND-IF\b/.test(upper)) {
+        depth++;
+      }
+      if (/\bEVALUATE\b/.test(upper) && !/\bEND-EVALUATE\b/.test(upper)) {
+        depth++;
+      }
+      if (/\bEND-IF\b/.test(upper)) {
+        depth = Math.max(0, depth - 1);
+      }
+      if (/\bEND-EVALUATE\b/.test(upper)) {
+        depth = Math.max(0, depth - 1);
+      }
+      if (depth > maxDepth) {
+        maxDepth = depth;
+        maxDepthLine = i + 1;
+      }
+    }
+
+    if (maxDepth > 4) {
+      let severity: Severity = "medium";
+      if (maxDepth > 8) severity = "critical";
+      else if (maxDepth > 6) severity = "high";
+
+      findings.push({
+        id: findingId("quality", "cobol-deep-nesting", ctx.filePath),
+        category: "quality",
+        severity,
+        title: `IF/EVALUATE nesting ${maxDepth} levels deep (line ${maxDepthLine})`,
+        description: `This file contains control flow nested ${maxDepth} levels deep at line ${maxDepthLine}. Deep nesting in COBOL makes the code extremely difficult to follow and is a frequent source of logic bugs.`,
+        filePath: ctx.filePath,
+        lineRange: [maxDepthLine, maxDepthLine],
+        suggestion: "Extract deeply nested logic into separate paragraphs. Use EVALUATE (switch) instead of nested IF chains. Consider using 88-level condition names for readability.",
+        effort: maxDepth > 8 ? "large" : "medium",
+        tags: ["cobol", "deep-nesting", "quality"],
+      });
+    }
+
+    return findings;
+  },
+};
+
+export const cobolDeadParagraphsRule: ReviewRule = {
+  id: "cobol-dead-paragraphs",
+  name: "Dead COBOL Paragraphs",
+  category: "maintainability",
+  severity: "medium",
+  languages: ["cobol"],
+  description: "Paragraphs never referenced in PERFORM or GO TO statements are dead code.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    const fns = ctx.structural.functions;
+    if (fns.length <= 1) return findings;
+
+    // Build set of all callees from call graph
+    const calledNames = new Set<string>();
+    for (const entry of ctx.callGraph) {
+      calledNames.add(entry.callee.toUpperCase());
+      // Handle PERFORM THRU ranges
+      if (entry.callee.includes(" THRU ")) {
+        const parts = entry.callee.split(" THRU ");
+        calledNames.add(parts[0].trim());
+        calledNames.add(parts[1].trim());
+      }
+    }
+
+    const deadParagraphs: string[] = [];
+    for (const fn of fns) {
+      // Skip the PROGRAM-ID entry point
+      if (fn.returnType === "PROGRAM") continue;
+      if (!calledNames.has(fn.name.toUpperCase())) {
+        deadParagraphs.push(fn.name);
+      }
+    }
+
+    if (deadParagraphs.length > 0) {
+      findings.push({
+        id: findingId("maintainability", "cobol-dead-paragraphs", ctx.filePath),
+        category: "maintainability",
+        severity: deadParagraphs.length > 5 ? "high" : "medium",
+        title: `${deadParagraphs.length} potentially dead paragraph${deadParagraphs.length > 1 ? "s" : ""}`,
+        description: `The following paragraph${deadParagraphs.length > 1 ? "s are" : " is"} never referenced by PERFORM or GO TO: ${deadParagraphs.join(", ")}. This is likely dead code.`,
+        filePath: ctx.filePath,
+        suggestion: `Verify these are truly unreachable (check cross-program callers via CALL). If confirmed dead, remove: ${deadParagraphs.join(", ")}`,
+        effort: deadParagraphs.length > 5 ? "medium" : "small",
+        tags: ["cobol", "dead-code", "maintainability"],
+      });
+    }
+
+    return findings;
+  },
+};
+
+export const cobolPerformThruRule: ReviewRule = {
+  id: "cobol-perform-thru",
+  name: "COBOL PERFORM THRU",
+  category: "maintainability",
+  severity: "medium",
+  languages: ["cobol"],
+  description: "PERFORM ... THRU is fragile — inserting paragraphs between changes behavior.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    const lines = ctx.content.split("\n");
+    const thruInstances: number[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const upper = lines[i].toUpperCase();
+      if (/\bPERFORM\s+\S+\s+(?:THRU|THROUGH)\s+\S+/i.test(upper)) {
+        thruInstances.push(i + 1);
+      }
+    }
+
+    if (thruInstances.length > 0) {
+      findings.push({
+        id: findingId("maintainability", "cobol-perform-thru", ctx.filePath),
+        category: "maintainability",
+        severity: "medium",
+        title: `${thruInstances.length} PERFORM THRU statement${thruInstances.length > 1 ? "s" : ""}`,
+        description: `PERFORM THRU executes all paragraphs between the start and end names. Inserting a new paragraph in between silently changes the program's behavior. Found at lines: ${thruInstances.slice(0, 10).join(", ")}`,
+        filePath: ctx.filePath,
+        suggestion: "Replace PERFORM THRU with individual PERFORM calls for each paragraph. This makes the execution order explicit and safe to refactor.",
+        effort: "medium",
+        tags: ["cobol", "perform-thru", "fragile"],
+      });
+    }
+
+    return findings;
+  },
+};
+
+export const cobolDataDivisionBloatRule: ReviewRule = {
+  id: "cobol-data-division-bloat",
+  name: "COBOL Data Division Bloat",
+  category: "maintainability",
+  severity: "high",
+  languages: ["cobol"],
+  description: "WORKING-STORAGE with too many 01-level items indicates high coupling.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    // Count 01-level items (classes in structural analysis, excluding FD entries)
+    const topLevelItems = ctx.structural.classes.filter(c => !c.name.startsWith("FD-"));
+    const count = topLevelItems.length;
+
+    if (count > 100) {
+      findings.push({
+        id: findingId("maintainability", "cobol-data-division-bloat", ctx.filePath),
+        category: "maintainability",
+        severity: "high",
+        title: `Data Division bloat: ${count} top-level data items`,
+        description: `This program defines ${count} 01-level items in WORKING-STORAGE. This excessive data coupling makes the program extremely difficult to understand and maintain.`,
+        filePath: ctx.filePath,
+        suggestion: "Group related data items into copybooks (COPY). Consider splitting the program into smaller programs that share data via files or message queues.",
+        effort: "large",
+        tags: ["cobol", "data-division", "bloat", "coupling"],
+      });
+    }
+
+    return findings;
+  },
+};
+
+export const cobolRedefinesAliasingRule: ReviewRule = {
+  id: "cobol-redefines-aliasing",
+  name: "COBOL REDEFINES Aliasing",
+  category: "security",
+  severity: "medium",
+  languages: ["cobol"],
+  description: "REDEFINES creates type aliasing — same memory viewed as different types.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    const redefinesImports = ctx.structural.imports.filter(i => i.source === "REDEFINES");
+
+    if (redefinesImports.length > 0) {
+      findings.push({
+        id: findingId("security", "cobol-redefines-aliasing", ctx.filePath),
+        category: "security",
+        severity: redefinesImports.length > 5 ? "high" : "medium",
+        title: `${redefinesImports.length} REDEFINES statement${redefinesImports.length > 1 ? "s" : ""}`,
+        description: `REDEFINES forces two data items to share the same memory. Modifying one silently changes the other. This is a form of type aliasing that can cause subtle data corruption bugs, especially during migration.`,
+        filePath: ctx.filePath,
+        lineRange: [redefinesImports[0].lineNumber, redefinesImports[redefinesImports.length - 1].lineNumber],
+        suggestion: "Document each REDEFINES clearly. During migration, replace with explicit type conversion or union types. Verify REDEFINES pairs have compatible sizes.",
+        effort: "medium",
+        tags: ["cobol", "redefines", "aliasing", "security"],
+        cweId: "CWE-843",
+      });
+    }
+
+    return findings;
+  },
+};
+
+export const cobolHardcodedValuesRule: ReviewRule = {
+  id: "cobol-hardcoded-values",
+  name: "COBOL Hardcoded Values",
+  category: "compliance",
+  severity: "low",
+  languages: ["cobol"],
+  description: "Literal strings and numbers in PROCEDURE DIVISION should be in WORKING-STORAGE constants.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    const lines = ctx.content.split("\n");
+    let inProcedure = false;
+    let hardcodedCount = 0;
+    const hardcodedLines: number[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const upper = lines[i].toUpperCase();
+      if (/\bPROCEDURE\s+DIVISION\b/i.test(upper)) {
+        inProcedure = true;
+        continue;
+      }
+      if (!inProcedure) continue;
+      // Skip comments
+      if (lines[i].length >= 7 && (lines[i][6] === "*" || lines[i][6] === "/")) continue;
+
+      // Numeric literals (not 0, 1, -1, ZERO, ZEROS, ZEROES, SPACES, SPACE)
+      const numMatches = upper.match(/\b\d{2,}\b/g);
+      if (numMatches) {
+        for (const num of numMatches) {
+          const val = parseInt(num, 10);
+          if (!isNaN(val) && val !== 0 && val !== 1) {
+            hardcodedCount++;
+            if (!hardcodedLines.includes(i + 1)) hardcodedLines.push(i + 1);
+          }
+        }
+      }
+
+      // Hardcoded string literals (but not common ones like '00', 'Y', 'N')
+      const strMatches = upper.match(/'[^']{3,}'/g);
+      if (strMatches) {
+        hardcodedCount += strMatches.length;
+        if (!hardcodedLines.includes(i + 1)) hardcodedLines.push(i + 1);
+      }
+    }
+
+    if (hardcodedCount > 10) {
+      findings.push({
+        id: findingId("compliance", "cobol-hardcoded-values", ctx.filePath),
+        category: "compliance",
+        severity: hardcodedCount > 25 ? "medium" : "low",
+        title: `${hardcodedCount} hardcoded values in PROCEDURE DIVISION`,
+        description: `This file has ${hardcodedCount} literal values used directly in the PROCEDURE DIVISION. Hardcoded values make programs brittle and difficult to maintain.`,
+        filePath: ctx.filePath,
+        suggestion: "Move literal values to 01-level items in WORKING-STORAGE with meaningful names (e.g., WS-MAX-RETRIES instead of 3).",
+        effort: "small",
+        tags: ["cobol", "hardcoded-values", "compliance"],
+      });
+    }
+
+    return findings;
+  },
+};
+
+export const cobolFileStatusUncheckedRule: ReviewRule = {
+  id: "cobol-file-status-unchecked",
+  name: "COBOL File Status Unchecked",
+  category: "reliability",
+  severity: "high",
+  languages: ["cobol"],
+  description: "FILE STATUS declared but never checked after I/O operations.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    const upper = ctx.content.toUpperCase();
+
+    // Find FILE STATUS variables
+    const statusVars: string[] = [];
+    const statusRe = /FILE\s+STATUS\s+(?:IS\s+)?(\S+)/gi;
+    let m: RegExpExecArray | null;
+    while ((m = statusRe.exec(upper)) !== null) {
+      statusVars.push(m[1].replace(/\.$/, ""));
+    }
+
+    if (statusVars.length === 0) return findings;
+
+    // Check if status variables are tested in PROCEDURE DIVISION
+    const procStart = upper.indexOf("PROCEDURE DIVISION");
+    if (procStart === -1) return findings;
+    const procBody = upper.slice(procStart);
+
+    const unchecked: string[] = [];
+    for (const v of statusVars) {
+      // Check if the variable appears in an IF condition after I/O ops
+      const escaped = v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const isChecked = new RegExp(`\\b${escaped}\\b`).test(procBody);
+      if (!isChecked) {
+        unchecked.push(v);
+      }
+    }
+
+    if (unchecked.length > 0) {
+      findings.push({
+        id: findingId("reliability", "cobol-file-status-unchecked", ctx.filePath),
+        category: "reliability",
+        severity: "high",
+        title: `${unchecked.length} FILE STATUS variable${unchecked.length > 1 ? "s" : ""} never checked`,
+        description: `FILE STATUS variable${unchecked.length > 1 ? "s" : ""} ${unchecked.join(", ")} ${unchecked.length > 1 ? "are" : "is"} declared but never tested in the PROCEDURE DIVISION. I/O errors will be silently ignored, potentially corrupting data.`,
+        filePath: ctx.filePath,
+        suggestion: "Check FILE STATUS after every READ, WRITE, OPEN, CLOSE, DELETE, REWRITE, and START operation.",
+        effort: "medium",
+        tags: ["cobol", "file-status", "error-handling", "reliability"],
+      });
+    }
+
+    return findings;
+  },
+};
+
+export const cobolMissingFileStatusRule: ReviewRule = {
+  id: "cobol-missing-file-status",
+  name: "COBOL Missing FILE STATUS",
+  category: "compliance",
+  severity: "high",
+  languages: ["cobol"],
+  description: "SELECT without FILE STATUS clause — I/O errors silently ignored.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    const lines = ctx.content.split("\n");
+    const selects: Array<{ name: string; line: number; hasStatus: boolean }> = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const upper = lines[i].toUpperCase();
+      const selectMatch = /\bSELECT\s+(\S+)/i.exec(upper);
+      if (selectMatch) {
+        const name = selectMatch[1].replace(/\.$/, "");
+        // Look ahead for FILE STATUS in the next few lines (multi-line SELECT)
+        let hasStatus = false;
+        const searchEnd = Math.min(i + 8, lines.length);
+        for (let j = i; j < searchEnd; j++) {
+          if (/\bFILE\s+STATUS\b/i.test(lines[j].toUpperCase())) {
+            hasStatus = true;
+            break;
+          }
+          // Stop if we hit another SELECT or a period ending the clause
+          if (j > i && /\bSELECT\b/i.test(lines[j].toUpperCase())) break;
+        }
+        selects.push({ name, line: i + 1, hasStatus });
+      }
+    }
+
+    const missing = selects.filter(s => !s.hasStatus);
+    if (missing.length > 0) {
+      findings.push({
+        id: findingId("compliance", "cobol-missing-file-status", ctx.filePath),
+        category: "compliance",
+        severity: "high",
+        title: `${missing.length} SELECT statement${missing.length > 1 ? "s" : ""} without FILE STATUS`,
+        description: `The following file${missing.length > 1 ? "s are" : " is"} opened without FILE STATUS: ${missing.map(m => m.name).join(", ")}. Without FILE STATUS, I/O errors cause abends rather than being handled gracefully.`,
+        filePath: ctx.filePath,
+        suggestion: "Add FILE STATUS IS ws-variable to each SELECT clause. Check the status after every I/O operation.",
+        effort: "small",
+        tags: ["cobol", "file-status", "compliance"],
+      });
+    }
+
+    return findings;
+  },
+};
+
+export const cobolParagraphNamingRule: ReviewRule = {
+  id: "cobol-paragraph-naming",
+  name: "COBOL Paragraph Naming Convention",
+  category: "compliance",
+  severity: "low",
+  languages: ["cobol"],
+  description: "Paragraphs not following VERB-NOUN naming convention.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    const badNames: string[] = [];
+
+    for (const fn of ctx.structural.functions) {
+      if (fn.returnType === "PROGRAM" || fn.returnType === "SECTION") continue;
+      const name = fn.name;
+      // Good patterns: NUMBER-VERB-NOUN (e.g., 1000-READ-ACCOUNT, 9999-ABEND-PROGRAM)
+      // or VERB-NOUN (e.g., READ-ACCOUNT, PROCESS-TRANSACTION)
+      const hasGoodPattern = /^\d{2,4}-/.test(name) || /^[A-Z]+-[A-Z]+/.test(name);
+      if (!hasGoodPattern && name.length > 1) {
+        badNames.push(name);
+      }
+    }
+
+    if (badNames.length > 3) {
+      findings.push({
+        id: findingId("compliance", "cobol-paragraph-naming", ctx.filePath),
+        category: "compliance",
+        severity: "low",
+        title: `${badNames.length} paragraphs with non-standard names`,
+        description: `The following paragraphs do not follow the recommended VERB-NOUN or NUMBER-VERB-NOUN naming convention: ${badNames.slice(0, 10).join(", ")}${badNames.length > 10 ? "..." : ""}`,
+        filePath: ctx.filePath,
+        suggestion: "Use descriptive VERB-NOUN names with numeric prefixes for ordering (e.g., 1000-READ-ACCOUNT, 2000-VALIDATE-DATA, 9000-CLOSE-FILES).",
+        effort: "small",
+        tags: ["cobol", "naming", "compliance"],
+      });
+    }
+
+    return findings;
+  },
+};
+
+export const cobolCopybookPollutionRule: ReviewRule = {
+  id: "cobol-copybook-pollution",
+  name: "COBOL Copybook Pollution",
+  category: "architecture",
+  severity: "medium",
+  languages: ["cobol"],
+  description: "Too many COPY statements suggests tangled dependencies.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    const copyImports = ctx.structural.imports.filter(
+      i => !i.source.startsWith("FILE/") && i.source !== "REDEFINES"
+    );
+    const uniqueCopybooks = new Set(copyImports.map(i => i.source));
+
+    if (uniqueCopybooks.size > 10) {
+      findings.push({
+        id: findingId("architecture", "cobol-copybook-pollution", ctx.filePath),
+        category: "architecture",
+        severity: uniqueCopybooks.size > 15 ? "high" : "medium",
+        title: `${uniqueCopybooks.size} copybook dependencies`,
+        description: `This program includes ${uniqueCopybooks.size} copybooks: ${[...uniqueCopybooks].slice(0, 10).join(", ")}${uniqueCopybooks.size > 10 ? "..." : ""}. Excessive copybook dependencies create tight coupling between programs and make changes risky.`,
+        filePath: ctx.filePath,
+        suggestion: "Review copybook usage. Consolidate related copybooks. Consider if all copybook data is actually used in this program.",
+        effort: "medium",
+        tags: ["cobol", "copybook", "coupling", "architecture"],
+      });
+    }
+
+    return findings;
+  },
+};
+
+export const cobolObsoleteVerbsRule: ReviewRule = {
+  id: "cobol-obsolete-verbs",
+  name: "COBOL Obsolete Verbs",
+  category: "modernization",
+  severity: "medium",
+  languages: ["cobol"],
+  description: "ALTER, EXAMINE, EXHIBIT, NOTE, TRANSFORM — removed in COBOL-85 or later.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    const lines = ctx.content.split("\n");
+    const obsolete: Array<{ verb: string; line: number }> = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const upper = lines[i].toUpperCase().trim();
+      // Skip comments
+      if (lines[i].length >= 7 && (lines[i][6] === "*" || lines[i][6] === "/")) continue;
+
+      const obsoleteMatch = /\b(ALTER|EXAMINE|EXHIBIT|NOTE|TRANSFORM)\b/i.exec(upper);
+      if (obsoleteMatch) {
+        // Make sure NOTE is not part of a data name
+        if (obsoleteMatch[1].toUpperCase() === "NOTE" && /\bNOTE\s*\./i.test(upper)) continue;
+        obsolete.push({ verb: obsoleteMatch[1].toUpperCase(), line: i + 1 });
+      }
+    }
+
+    if (obsolete.length > 0) {
+      const verbs = [...new Set(obsolete.map(o => o.verb))];
+      findings.push({
+        id: findingId("modernization", "cobol-obsolete-verbs", ctx.filePath),
+        category: "modernization",
+        severity: obsolete.length > 5 ? "high" : "medium",
+        title: `${obsolete.length} obsolete COBOL verb${obsolete.length > 1 ? "s" : ""} detected`,
+        description: `This file uses obsolete COBOL verbs: ${verbs.join(", ")}. These were removed in COBOL-85 or later standards and will not compile on modern COBOL compilers.`,
+        filePath: ctx.filePath,
+        suggestion: "Replace ALTER with EVALUATE or IF/ELSE. Replace EXAMINE with INSPECT. Replace NOTE with *> comments. Replace TRANSFORM with INSPECT CONVERTING.",
+        effort: "medium",
+        tags: ["cobol", "obsolete", "modernization"],
+      });
+    }
+
+    return findings;
+  },
+};
+
+export const cobolComp3OpportunityRule: ReviewRule = {
+  id: "cobol-comp3-opportunity",
+  name: "COBOL COMP-3 Opportunity",
+  category: "performance",
+  severity: "low",
+  languages: ["cobol"],
+  description: "Identify computational fields still using DISPLAY format that should be COMP-3.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    const lines = ctx.content.split("\n");
+    let displayNumerics = 0;
+    let comp3Count = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const upper = lines[i].toUpperCase();
+      // Skip comments
+      if (lines[i].length >= 7 && (lines[i][6] === "*" || lines[i][6] === "/")) continue;
+
+      // Numeric PIC with 5+ digits in DISPLAY format (no COMP qualifier)
+      if (/\bPIC(?:TURE)?\s+(?:IS\s+)?S?9\(\d+\)(?:V9\(\d+\))?/i.test(upper)) {
+        if (!/\bCOMP|BINARY|PACKED/i.test(upper)) {
+          // Extract digit count
+          const digitMatch = /9\((\d+)\)/i.exec(upper);
+          if (digitMatch && parseInt(digitMatch[1], 10) >= 5) {
+            displayNumerics++;
+          }
+        } else if (/\bCOMP-3|PACKED/i.test(upper)) {
+          comp3Count++;
+        }
+      }
+    }
+
+    if (displayNumerics > 5 && comp3Count === 0) {
+      findings.push({
+        id: findingId("performance", "cobol-comp3-opportunity", ctx.filePath),
+        category: "performance",
+        severity: "low",
+        title: `${displayNumerics} numeric fields in DISPLAY format could be COMP-3`,
+        description: `This file defines ${displayNumerics} large numeric fields in DISPLAY format but uses no COMP-3. COMP-3 (packed decimal) uses roughly half the storage and is significantly faster for arithmetic operations on IBM mainframes.`,
+        filePath: ctx.filePath,
+        suggestion: "Add USAGE COMP-3 to numeric fields used in computations. Keep DISPLAY format only for fields that need character-by-character access.",
+        effort: "small",
+        tags: ["cobol", "comp-3", "performance"],
+      });
+    }
+
+    return findings;
+  },
+};
+
+// ============================================================================
 // Default Rules Collection
 // ============================================================================
 
@@ -1128,6 +1778,21 @@ export function createDefaultRulesEngine(): RulesEngine {
     noErrorBoundaryRule,
     callbackHellRule,
     unsafeRegexRule,
+    // COBOL
+    cobolLargeParagraphRule,
+    cobolGotoUsageRule,
+    cobolDeepNestingRule,
+    cobolDeadParagraphsRule,
+    cobolPerformThruRule,
+    cobolDataDivisionBloatRule,
+    cobolRedefinesAliasingRule,
+    cobolHardcodedValuesRule,
+    cobolFileStatusUncheckedRule,
+    cobolMissingFileStatusRule,
+    cobolParagraphNamingRule,
+    cobolCopybookPollutionRule,
+    cobolObsoleteVerbsRule,
+    cobolComp3OpportunityRule,
   ]);
   return engine;
 }

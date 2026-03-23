@@ -188,8 +188,8 @@ describe("TypeScript profile", () => {
 // Stub profiles
 // ---------------------------------------------------------------------------
 
-describe("Stub profiles (COBOL, C/C++, Python, Java, Ada, RPG)", () => {
-  const stubs = [cobolProfile, cCppProfile, pythonProfile, javaProfile, adaProfile, rpgProfile];
+describe("Stub profiles (C/C++, Python, Java, Ada, RPG)", () => {
+  const stubs = [cCppProfile, pythonProfile, javaProfile, adaProfile, rpgProfile];
 
   it("all have empty staticRules (no rules implemented yet)", () => {
     for (const stub of stubs) {
@@ -323,8 +323,10 @@ describe("getReadyProfiles()", () => {
     // TypeScript has rules and capabilities but no migration requirement
     expect(readyIds).toContain("typescript");
 
+    // COBOL is now fully implemented
+    expect(readyIds).toContain("cobol");
+
     // Stubs should NOT be ready
-    expect(readyIds).not.toContain("cobol");
     expect(readyIds).not.toContain("c-cpp");
     expect(readyIds).not.toContain("python");
     expect(readyIds).not.toContain("java");
@@ -355,11 +357,10 @@ describe("getProfileStatus()", () => {
     expect(status!.ready).toBe(true);
   });
 
-  it("returns ready=false for cobol (stub)", () => {
+  it("returns ready=true for cobol (fully implemented)", () => {
     const status = getProfileStatus("cobol");
     expect(status).toBeDefined();
-    expect(status!.ready).toBe(false);
-    expect(status!.missingTests.length).toBeGreaterThan(0);
+    expect(status!.ready).toBe(true);
   });
 
   it("returns ready=false for c-cpp (stub)", () => {

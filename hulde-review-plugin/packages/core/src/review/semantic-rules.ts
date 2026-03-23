@@ -1186,6 +1186,242 @@ export const apiErrorContractRule: ReviewRule = {
 };
 
 // ============================================================================
+// E. COBOL-SPECIFIC DEEP RULES
+// ============================================================================
+
+export const cobolPerformChainRule: ReviewRule = {
+  id: "cobol-perform-chain",
+  name: "COBOL PERFORM Chain Analysis",
+  category: "quality",
+  severity: "high",
+  languages: ["cobol"],
+  description: "Trace PERFORM chains — if A PERFORMs B and B PERFORMs A, there is recursive risk.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    if (ctx.callGraph.length === 0) return findings;
+
+    // Build adjacency list from call graph (PERFORM entries only, not CALL)
+    const adj = new Map<string, Set<string>>();
+    for (const entry of ctx.callGraph) {
+      const caller = entry.caller.toUpperCase();
+      const callee = entry.callee.toUpperCase();
+      // Skip external CALL entries and GO TO
+      if (callee.includes("'") || callee.includes('"')) continue;
+      if (!adj.has(caller)) adj.set(caller, new Set());
+      adj.get(caller)!.add(callee);
+    }
+
+    // DFS cycle detection
+    const cycles: string[][] = [];
+    const visited = new Set<string>();
+    const inStack = new Set<string>();
+    const path: string[] = [];
+
+    function dfs(node: string): void {
+      if (inStack.has(node)) {
+        const cycleStart = path.indexOf(node);
+        if (cycleStart >= 0) {
+          cycles.push([...path.slice(cycleStart), node]);
+        }
+        return;
+      }
+      if (visited.has(node)) return;
+      visited.add(node);
+      inStack.add(node);
+      path.push(node);
+
+      const neighbors = adj.get(node);
+      if (neighbors) {
+        for (const n of neighbors) {
+          dfs(n);
+        }
+      }
+
+      path.pop();
+      inStack.delete(node);
+    }
+
+    for (const node of adj.keys()) {
+      visited.clear();
+      inStack.clear();
+      path.length = 0;
+      dfs(node);
+    }
+
+    if (cycles.length > 0) {
+      const cycleStr = cycles.slice(0, 5).map(c => c.join(" -> ")).join("; ");
+      findings.push({
+        id: findingId("quality", "cobol-perform-chain", ctx.filePath),
+        category: "quality",
+        severity: "critical",
+        title: `${cycles.length} recursive PERFORM chain${cycles.length > 1 ? "s" : ""} detected`,
+        description: `PERFORM chain analysis reveals recursive cycles: ${cycleStr}. COBOL does not support recursion natively — a PERFORM loop back to the current paragraph causes undefined behavior or infinite loops on most mainframes.`,
+        filePath: ctx.filePath,
+        suggestion: "Break the recursive cycle by restructuring the control flow. Use iteration (PERFORM UNTIL) instead of mutual recursion between paragraphs.",
+        effort: "large",
+        tags: ["cobol", "perform-chain", "recursion", "semantic"],
+      });
+    }
+
+    return findings;
+  },
+};
+
+export const cobolDataFlowThroughCopyRule: ReviewRule = {
+  id: "cobol-data-flow-through-copy",
+  name: "COBOL Shared Copybook Data",
+  category: "architecture",
+  severity: "medium",
+  languages: ["cobol"],
+  description: "Flag COPY members that define data used across multiple programs (shared state).",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+
+    // Get copybook imports
+    const copyImports = ctx.structural.imports.filter(
+      i => !i.source.startsWith("FILE/") && i.source !== "REDEFINES"
+    );
+
+    if (copyImports.length === 0) return findings;
+
+    // Check if copybook-defined data items are referenced extensively in PROCEDURE DIVISION
+    const upper = ctx.content.toUpperCase();
+    const procStart = upper.indexOf("PROCEDURE DIVISION");
+    if (procStart === -1) return findings;
+
+    // Well-known shared copybooks in enterprise COBOL
+    const sharedPatterns = ["COMMAREA", "DFHAID", "DFHBMSCA", "DFHEIBLK", "SQLCA"];
+    const sharedCopybooks = copyImports.filter(imp => {
+      const src = imp.source.toUpperCase();
+      return sharedPatterns.some(p => src.includes(p));
+    });
+
+    if (sharedCopybooks.length > 0 && copyImports.length > 3) {
+      findings.push({
+        id: findingId("architecture", "cobol-data-flow-through-copy", ctx.filePath),
+        category: "architecture",
+        severity: "medium",
+        title: `${copyImports.length} copybooks define shared data structures`,
+        description: `This program uses ${copyImports.length} copybooks including ${sharedCopybooks.length} shared system copybooks (${sharedCopybooks.map(c => c.source).join(", ")}). Shared copybooks create implicit coupling — changes to a copybook affect all programs that COPY it.`,
+        filePath: ctx.filePath,
+        suggestion: "Document all copybook dependencies. Consider creating program-specific copybooks for local data. Use COPY ... REPLACING to avoid name conflicts.",
+        effort: "medium",
+        tags: ["cobol", "copybook", "shared-state", "architecture", "semantic"],
+      });
+    }
+
+    return findings;
+  },
+};
+
+export const cobolMigrationReadinessRule: ReviewRule = {
+  id: "cobol-migration-readiness",
+  name: "COBOL Migration Readiness",
+  category: "modernization",
+  severity: "medium",
+  languages: ["cobol"],
+  description: "Score each COBOL program for migration readiness based on complexity indicators.",
+  check(ctx) {
+    const findings: ReviewFinding[] = [];
+    const upper = ctx.content.toUpperCase();
+
+    let score = 1; // Start at 1 (easy)
+    const blockers: string[] = [];
+
+    // GO TO statements
+    const gotoCount = (upper.match(/\bGO\s*TO\b/g) || []).length;
+    if (gotoCount > 0) {
+      score += Math.min(gotoCount * 0.2, 2);
+      blockers.push(`${gotoCount} GO TO${gotoCount > 1 ? "s" : ""}`);
+    }
+
+    // PERFORM THRU
+    const thruCount = (upper.match(/\bPERFORM\s+\S+\s+(?:THRU|THROUGH)\s+/g) || []).length;
+    if (thruCount > 0) {
+      score += thruCount * 0.3;
+      blockers.push(`${thruCount} PERFORM THRU`);
+    }
+
+    // REDEFINES
+    const redefinesCount = (upper.match(/\bREDEFINES\b/g) || []).length;
+    if (redefinesCount > 0) {
+      score += redefinesCount * 0.2;
+      blockers.push(`${redefinesCount} REDEFINES`);
+    }
+
+    // CICS calls
+    const cicsCount = (upper.match(/\bEXEC\s+CICS\b/g) || []).length;
+    if (cicsCount > 0) {
+      score += Math.min(cicsCount * 0.3, 2);
+      blockers.push(`${cicsCount} CICS call${cicsCount > 1 ? "s" : ""}`);
+    }
+
+    // DB2 SQL
+    const sqlCount = (upper.match(/\bEXEC\s+SQL\b/g) || []).length;
+    if (sqlCount > 0) {
+      score += Math.min(sqlCount * 0.2, 1.5);
+      blockers.push(`${sqlCount} embedded SQL`);
+    }
+
+    // File I/O complexity
+    const fileOps = (upper.match(/\b(READ|WRITE|REWRITE|DELETE|START)\s+/g) || []).length;
+    if (fileOps > 10) {
+      score += 0.5;
+      blockers.push(`${fileOps} file I/O operations`);
+    }
+
+    // Program size
+    const lineCount = ctx.content.split("\n").length;
+    if (lineCount > 2000) {
+      score += 1;
+      blockers.push(`Large program (${lineCount} lines)`);
+    } else if (lineCount > 1000) {
+      score += 0.5;
+    }
+
+    // CALL statements (external dependencies)
+    const callCount = (upper.match(/\bCALL\s+['"][^'"]+['"]/g) || []).length;
+    if (callCount > 5) {
+      score += 0.5;
+      blockers.push(`${callCount} external CALL${callCount > 1 ? "s" : ""}`);
+    }
+
+    // Cap at 5
+    const readiness = Math.min(Math.round(score), 5);
+
+    const labels: Record<number, string> = {
+      1: "Easy — clean structured COBOL, straightforward migration",
+      2: "Moderate — some legacy patterns but manageable",
+      3: "Hard — significant complexity, requires careful planning",
+      4: "Very Hard — deep CICS/DB2 integration, extensive refactoring needed",
+      5: "Rewrite — too entangled for automated migration",
+    };
+
+    let severity: Severity = "info";
+    if (readiness >= 4) severity = "high";
+    else if (readiness >= 3) severity = "medium";
+
+    findings.push({
+      id: findingId("modernization", "cobol-migration-readiness", ctx.filePath),
+      category: "modernization",
+      severity,
+      title: `Migration readiness: ${readiness}/5 — ${labels[readiness]?.split(" — ")[0] || "Unknown"}`,
+      description: `${labels[readiness] || "Unknown readiness level"}. ${blockers.length > 0 ? `Migration blockers: ${blockers.join(", ")}.` : "No significant blockers found."}`,
+      filePath: ctx.filePath,
+      suggestion: readiness <= 2
+        ? "This program is a good candidate for automated migration tools (Micro Focus, IBM watsonx Code Assistant for Z)."
+        : readiness <= 3
+          ? "Manual refactoring recommended before automated migration. Address GO TO and PERFORM THRU patterns first."
+          : "Consider a strangler fig pattern: wrap this program behind an API and rewrite incrementally.",
+      effort: readiness <= 2 ? "medium" : readiness <= 3 ? "large" : "epic",
+      tags: ["cobol", "migration", "readiness", "semantic"],
+    });
+
+    return findings;
+  },
+};
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -1210,5 +1446,9 @@ export function createSemanticRules(): ReviewRule[] {
     reactRerenderRiskRule,
     typeAssertionAbuseRule,
     apiErrorContractRule,
+    // COBOL deep
+    cobolPerformChainRule,
+    cobolDataFlowThroughCopyRule,
+    cobolMigrationReadinessRule,
   ];
 }

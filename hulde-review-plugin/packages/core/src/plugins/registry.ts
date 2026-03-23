@@ -24,6 +24,9 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
   f03: "fortran",
   f08: "fortran",
   fpp: "fortran",
+  cbl: "cobol",
+  cob: "cobol",
+  cpy: "cobol",
 };
 
 /**
