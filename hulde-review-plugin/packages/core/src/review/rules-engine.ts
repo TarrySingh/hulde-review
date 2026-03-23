@@ -7,6 +7,7 @@
 
 import type { StructuralAnalysis, CallGraphEntry } from "../types.js";
 import type { ReviewFinding, FindingCategory, Severity } from "./types.js";
+import { createSemanticRules } from "./semantic-rules.js";
 
 // ---------------------------------------------------------------------------
 // Analysis Context — passed to each rule
@@ -1128,5 +1129,16 @@ export function createDefaultRulesEngine(): RulesEngine {
     callbackHellRule,
     unsafeRegexRule,
   ]);
+  return engine;
+}
+
+/**
+ * Creates a rules engine with BOTH basic and deep semantic rules.
+ * This is the enterprise-grade engine with data flow, control flow,
+ * migration readiness, and language-specific deep analysis.
+ */
+export function createDefaultRulesEngineWithSemanticRules(): RulesEngine {
+  const engine = createDefaultRulesEngine();
+  engine.registerMany(createSemanticRules());
   return engine;
 }

@@ -59,7 +59,15 @@ export type {
 export {
   RulesEngine,
   createDefaultRulesEngine,
+  createDefaultRulesEngineWithSemanticRules,
   type AnalysisContext,
   type ReviewRule,
 } from "./review/rules-engine.js";
+export { createSemanticRules } from "./review/semantic-rules.js";
+export {
+  MigrationAnalyzer,
+  type MigrationTarget,
+  type SubroutineMigration,
+  type MigrationPlan,
+} from "./review/migration-analyzer.js";
 export { ReportGenerator, type ReportInput } from "./review/report-generator.js";

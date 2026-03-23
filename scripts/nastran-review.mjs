@@ -5,8 +5,9 @@
  */
 
 import { FortranPlugin } from '../hulde-review-plugin/packages/core/dist/plugins/fortran-plugin.js';
-import { createDefaultRulesEngine } from '../hulde-review-plugin/packages/core/dist/review/rules-engine.js';
+import { createDefaultRulesEngineWithSemanticRules } from '../hulde-review-plugin/packages/core/dist/review/rules-engine.js';
 import { ReportGenerator } from '../hulde-review-plugin/packages/core/dist/review/report-generator.js';
+import { MigrationAnalyzer } from '../hulde-review-plugin/packages/core/dist/review/migration-analyzer.js';
 import { readFileSync, writeFileSync, readdirSync, statSync, mkdirSync, existsSync } from 'fs';
 import { join, relative } from 'path';
 
@@ -38,8 +39,10 @@ const startTime = Date.now();
 
 // Initialize
 const plugin = new FortranPlugin();
-const engine = createDefaultRulesEngine();
+const engine = createDefaultRulesEngineWithSemanticRules();
+const migrationAnalyzer = new MigrationAnalyzer();
 const allFindings = [];
+const allMigrations = [];
 let totalLines = 0;
 let filesAnalyzed = 0;
 let filesWithErrors = 0;
@@ -77,6 +80,17 @@ for (let i = 0; i < files.length; i++) {
     });
 
     allFindings.push(...findings);
+
+    // Migration analysis for each subroutine
+    for (const fn of structural.functions) {
+      try {
+        const migration = migrationAnalyzer.analyzeSubroutine(
+          fn.name, relPath, content, structural, callGraph,
+        );
+        allMigrations.push(migration);
+      } catch { /* skip */ }
+    }
+
     filesAnalyzed++;
   } catch (err) {
     filesWithErrors++;
@@ -115,6 +129,14 @@ const report = generator.generate({
   fileLinesMap,
 });
 
+// Generate migration plan
+console.log('Phase 4 — Migration Analysis...');
+const migrationPlan = migrationAnalyzer.generatePlan(allMigrations, 'NASA NASTRAN-93');
+console.log(`  ✓ Analyzed ${allMigrations.length} subroutines for migration readiness`);
+console.log(`  ✓ Overall readiness: ${migrationPlan.overallReadiness}/5`);
+console.log(`  ✓ Strategy: ${migrationPlan.recommendedStrategy.split(' — ')[0]}`);
+console.log('');
+
 // Write output
 if (!existsSync(OUTPUT_DIR)) {
   mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -123,6 +145,11 @@ if (!existsSync(OUTPUT_DIR)) {
 writeFileSync(
   join(OUTPUT_DIR, 'review-report.json'),
   JSON.stringify(report, null, 2),
+);
+
+writeFileSync(
+  join(OUTPUT_DIR, 'migration-plan.json'),
+  JSON.stringify(migrationPlan, null, 2),
 );
 
 // Generate markdown report
@@ -176,6 +203,36 @@ for (const rec of report.recommendations) {
   md.push('');
   md.push(`- **Effort**: ${rec.estimatedEffort}`);
   md.push(`- **Impact**: ${rec.impact}`);
+  md.push('');
+}
+
+// Migration Readiness section
+md.push('## Migration Readiness');
+md.push('');
+md.push(`**Overall Readiness Score: ${migrationPlan.overallReadiness}/5**`);
+md.push('');
+md.push(`**Recommended Strategy**: ${migrationPlan.recommendedStrategy}`);
+md.push('');
+md.push(`| Readiness | Count | Description |`);
+md.push(`|---|---|---|`);
+md.push(`| 1 (Easy) | ${migrationPlan.byReadiness[1]} | Pure computation, clean interfaces |`);
+md.push(`| 2 (Moderate) | ${migrationPlan.byReadiness[2]} | Some legacy patterns but manageable |`);
+md.push(`| 3 (Hard) | ${migrationPlan.byReadiness[3]} | COMMON blocks, GOTOs, self-contained |`);
+md.push(`| 4 (Very Hard) | ${migrationPlan.byReadiness[4]} | Deep interdependencies, system calls |`);
+md.push(`| 5 (Rewrite) | ${migrationPlan.byReadiness[5]} | ENTRY points, computed GOTOs, non-standard |`);
+md.push('');
+md.push('### Migration Phases');
+md.push('');
+for (const phase of migrationPlan.phases) {
+  md.push(`#### Phase ${phase.phase}: ${phase.title}`);
+  md.push('');
+  md.push(phase.description);
+  md.push('');
+  md.push(`- **Effort**: ${phase.effort}`);
+  md.push(`- **Risk**: ${phase.risk}`);
+  if (phase.subroutines.length > 0) {
+    md.push(`- **Subroutines**: ${phase.subroutines.length} (${phase.subroutines.slice(0, 10).join(', ')}${phase.subroutines.length > 10 ? '...' : ''})`);
+  }
   md.push('');
 }
 
@@ -250,7 +307,11 @@ console.log(`║  Info:            ${String(report.summary.bySeverity.info).padE
 console.log(`║  Tech Debt:       ${String(report.summary.technicalDebtHours.toLocaleString() + ' hours').padEnd(38)}║`);
 console.log(`║  Time:            ${String(elapsed + 's').padEnd(38)}║`);
 console.log('╠══════════════════════════════════════════════════════════╣');
+console.log(`║  Migration:       ${String(allMigrations.length + ' subroutines analyzed').padEnd(38)}║`);
+console.log(`║  Readiness:       ${String(migrationPlan.overallReadiness + '/5').padEnd(38)}║`);
+console.log('╠══════════════════════════════════════════════════════════╣');
 console.log('║  Output:                                                 ║');
 console.log('║  → .hulde-review/review-report.json                     ║');
 console.log('║  → .hulde-review/review-report.md                       ║');
+console.log('║  → .hulde-review/migration-plan.json                    ║');
 console.log('╚══════════════════════════════════════════════════════════╝');
